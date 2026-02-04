@@ -19,6 +19,14 @@ if [[ "$type" == "ENABLE" && -z "$expires_at" ]]; then
   exit 1
 fi
 
+if [[ "$type" == "ENABLE" ]]; then
+  # For ENABLE events, expires_at must be a timestamp string.
+  expires_json="\"$expires_at\""
+else
+  # For DISABLE (or other types), store null.
+  expires_json="null"
+fi
+
 tmp="$(mktemp)"
 cat > "$tmp" <<JSON
 {
@@ -27,16 +35,10 @@ cat > "$tmp" <<JSON
   "stack_id": "$stack_id",
   "created_at": "$ts",
   "payload": {
-    "expires_at": ${expires_at:+ "$expires_at"} ${expires_at:+"":+null}
+    "expires_at": $expires_json
   }
 }
 JSON
-
-# Fix payload expires_at formatting (bash annoyance):
-# If DISABLE, set expires_at null.
-if [[ "$type" == "DISABLE" ]]; then
-  jq '.payload.expires_at = null' "$tmp" > "${tmp}.2" && mv "${tmp}.2" "$tmp"
-fi
 
 aws s3 cp "$tmp" "s3://${bucket}/${key}" --content-type "application/json" >/dev/null
 echo "$key"
