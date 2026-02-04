@@ -1,0 +1,73 @@
+name: Sync stacks to Azure (Terraform)
+
+on:
+  workflow_dispatch:
+    inputs:
+      resource_group_name:
+        description: "Existing Azure Resource Group name where resources will be created"
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      S3_BUCKET: iac-events
+      S3_PREFIX: v1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Install jq
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+
+      - name: Compute enabled stacks from S3
+        run: |
+          set -euo pipefail
+          chmod +x scripts/*.sh
+          ./scripts/s3_get_latest_state.sh "$S3_BUCKET" "$S3_PREFIX" | tee enabled.json
+          echo "Enabled stacks:"
+          jq -r '.enabled[]?' enabled.json | sed 's/^/ - /' || true
+
+      - name: Generate root TF modules file
+        run: |
+          set -euo pipefail
+          ./scripts/generate_root_tf.sh enabled.json
+          echo "Generated root/generated.auto.tf:"
+          sed -n '1,200p' root/generated.auto.tf
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Terraform Init/Plan/Apply
+        working-directory: root
+        env:
+          ARM_USE_OIDC: true
+          TF_VAR_resource_group_name: ${{ inputs.resource_group_name }}
+        run: |
+          set -euo pipefail
+          terraform init
+          terraform plan
+          terraform apply -auto-approve

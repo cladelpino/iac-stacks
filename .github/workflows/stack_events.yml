@@ -1,0 +1,80 @@
+name: Stack events (S3)
+
+on:
+  workflow_dispatch:
+    inputs:
+      stack_id:
+        description: "Stack folder under /stacks (e.g. alpha, beta)"
+        required: true
+        type: string
+      enable:
+        description: "Enable (true) or Disable (false)"
+        required: true
+        type: boolean
+      expires_at:
+        description: "Required if enable=true. RFC3339 UTC timestamp, e.g. 2026-02-10T00:00:00Z"
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  write_event:
+    runs-on: ubuntu-latest
+    env:
+      S3_BUCKET: iac-events
+      S3_PREFIX: v1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate stack_id exists
+        run: |
+          set -euo pipefail
+          if [[ ! -d "stacks/${{ inputs.stack_id }}" ]]; then
+            echo "ERROR: stack_id '${{ inputs.stack_id }}' not found under stacks/." >&2
+            echo "Available stacks:" >&2
+            find stacks -mindepth 1 -maxdepth 1 -type d -printf "%f\n" | sort >&2
+            exit 1
+          fi
+
+      - name: Validate expires_at when enabling
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.enable }}" == "true" ]]; then
+            if [[ -z "${{ inputs.expires_at }}" ]]; then
+              echo "ERROR: expires_at is required when enable=true" >&2
+              exit 1
+            fi
+            if ! date -u -d "${{ inputs.expires_at }}" >/dev/null 2>&1; then
+              echo "ERROR: expires_at must be parseable datetime (RFC3339). Example: 2026-02-10T00:00:00Z" >&2
+              exit 1
+            fi
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Install jq
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+
+      - name: Write ENABLE/DISABLE event to S3
+        env:
+          RUNID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          chmod +x scripts/*.sh
+          if [[ "${{ inputs.enable }}" == "true" ]]; then
+            key="$(./scripts/s3_put_event.sh "$S3_BUCKET" "$S3_PREFIX" "${{ inputs.stack_id }}" "ENABLE" "${{ inputs.expires_at }}" "$RUNID")"
+          else
+            key="$(./scripts/s3_put_event.sh "$S3_BUCKET" "$S3_PREFIX" "${{ inputs.stack_id }}" "DISABLE" "" "$RUNID")"
+          fi
+          echo "Wrote event: s3://$S3_BUCKET/$key"
