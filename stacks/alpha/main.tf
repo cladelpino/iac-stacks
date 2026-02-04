@@ -8,7 +8,7 @@ data "azurerm_resource_group" "rg" {
 
 
 locals {
-  storage_account_name = "alpha-unique-asdasd"
+  storage_account_name = "alphauniqueasdasd"
 }
 
 resource "azurerm_storage_account" "sa" {
