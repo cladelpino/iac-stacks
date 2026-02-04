@@ -35,14 +35,19 @@ jobs:
           ./scripts/s3_get_latest_state.sh "$S3_BUCKET" "$S3_PREFIX" | tee enabled.txt
           echo "Enabled stacks:"
           line="$(<enabled.txt)"
-          IFS=',' read -ra stacks <<< "$line"
-          if ((${#stacks[@]} == 0 || ( ${#stacks[@]} == 1 && -z "${stacks[0]}" ))); then
+          if [[ -z "$line" ]]; then
             echo " - (none)"
           else
+            IFS=',' read -ra stacks <<< "$line"
+            printed=0
             for s in "${stacks[@]}"; do
               [[ -z "$s" ]] && continue
               echo " - $s"
+              printed=1
             done
+            if [[ $printed -eq 0 ]]; then
+              echo " - (none)"
+            fi
           fi
 
       - name: Generate root TF modules file
