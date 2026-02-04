@@ -48,7 +48,6 @@ for s in "${stacks[@]}"; do
   fi
 done
 
-printf 'enabled:'
 for i in "${!enabled[@]}"; do
   s="${enabled[$i]}"
   if (( i > 0 )); then

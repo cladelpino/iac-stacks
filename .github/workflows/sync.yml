@@ -35,7 +35,6 @@ jobs:
           ./scripts/s3_get_latest_state.sh "$S3_BUCKET" "$S3_PREFIX" | tee enabled.txt
           echo "Enabled stacks:"
           line="$(<enabled.txt)"
-          line="${line#enabled:}"
           IFS=',' read -ra stacks <<< "$line"
           if ((${#stacks[@]} == 0 || ( ${#stacks[@]} == 1 && -z "${stacks[0]}" ))); then
             echo " - (none)"
