@@ -7,7 +7,7 @@ data "azurerm_resource_group" "rg" {
 }
 
 locals {
-  storage_account_name = "beta"
+  storage_account_name = "iacbetatest1234"
 }
 
 resource "azurerm_storage_account" "sa" {
