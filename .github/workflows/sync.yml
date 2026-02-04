@@ -28,24 +28,28 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Install jq
-        run: |
-          set -euo pipefail
-          sudo apt-get update -y
-          sudo apt-get install -y jq
-
       - name: Compute enabled stacks from S3
         run: |
           set -euo pipefail
           chmod +x scripts/*.sh
-          ./scripts/s3_get_latest_state.sh "$S3_BUCKET" "$S3_PREFIX" | tee enabled.json
+          ./scripts/s3_get_latest_state.sh "$S3_BUCKET" "$S3_PREFIX" | tee enabled.txt
           echo "Enabled stacks:"
-          jq -r '.enabled[]?' enabled.json | sed 's/^/ - /' || true
+          line="$(<enabled.txt)"
+          line="${line#enabled:}"
+          IFS=',' read -ra stacks <<< "$line"
+          if ((${#stacks[@]} == 0 || ( ${#stacks[@]} == 1 && -z "${stacks[0]}" ))); then
+            echo " - (none)"
+          else
+            for s in "${stacks[@]}"; do
+              [[ -z "$s" ]] && continue
+              echo " - $s"
+            done
+          fi
 
       - name: Generate root TF modules file
         run: |
           set -euo pipefail
-          ./scripts/generate_root_tf.sh enabled.json
+          ./scripts/generate_root_tf.sh enabled.txt
           echo "Generated root/generated.auto.tf:"
           sed -n '1,200p' root/generated.auto.tf
 

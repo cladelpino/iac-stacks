@@ -27,8 +27,16 @@ for s in "${stacks[@]}"; do
 
   obj="$(aws s3 cp "s3://${bucket}/${key}" -)"
 
-  type="$(jq -r '.type' <<<"$obj")"
-  expires_at="$(jq -r '.payload.expires_at // empty' <<<"$obj")"
+  # Extract fields from our known JSON shape without jq.
+  # "type" line looks like:   "type": "ENABLE",
+  type="$(printf '%s\n' "$obj" | awk -F'"' '/"type"/ {print $4; exit}')"
+
+  # "expires_at" line looks like: "expires_at": "2026-02-10T00:00:00Z" or "expires_at": null
+  expires_line="$(printf '%s\n' "$obj" | grep '"expires_at"' || true)"
+  expires_at=""
+  if [[ -n "$expires_line" && "$expires_line" != *null* ]]; then
+    expires_at="$(printf '%s\n' "$expires_line" | awk -F'"' '{print $4}')"
+  fi
 
   if [[ "$type" == "DISABLE" ]]; then
     continue
@@ -40,5 +48,12 @@ for s in "${stacks[@]}"; do
   fi
 done
 
-jq -n --argjson arr "$(printf '%s\n' "${enabled[@]}" | jq -R . | jq -s .)" \
-  '{enabled: $arr}'
+printf 'enabled:'
+for i in "${!enabled[@]}"; do
+  s="${enabled[$i]}"
+  if (( i > 0 )); then
+    printf ','
+  fi
+  printf '%s' "$s"
+done
+printf '\n'
